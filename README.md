@@ -1,142 +1,85 @@
 # mscans — CTF Image Analysis Wrapper
 
-Bash wrapper chaining forensic tools for CTF image analysis in optimal order.
+Bash wrapper for CTF image triage.
 
-**File → Metadata → Strings → Binwalk → LSB Stego → Steghide/Stegseek → QR → Foremost → Channel Split → Auto-Decode**
+**File → Metadata → Strings → Stego → QR → Forensic extraction → Auto-decode → HTML report**
 
-Skips missing tools gracefully with install commands. Quick mode for fast initial triage.
+Missing tools skip cleanly. Every scan writes text logs plus `report.html`.
 
 ## Quick Start
 
 ```bash
-# Quick mode — fast tools only (~10s)
-./mscans -q image.png
-
-# Full analysis — all tools (~1-3 min)
-./mscans image.png
-
-# Flag search
-./mscans -f 'FLAG' image.png
-
-# Contest prefix search
-./mscans -g LYKNCTF,FTPCTF image.png
-
-# Install all missing tools (no image needed)
-./mscans -i
-
-# Custom output directory
-./mscans -o ./results image.png
+./mscans -q image.png                 # metadata + strings
+./mscans image.png                    # full scan
+./mscans -f 'FLAG|CTF' image.png      # regex search
+./mscans -g LYKNCTF,FTPCTF image.png  # literal contest prefixes
+./mscans -i                           # install missing tools
+./mscans -o ./results image.png       # custom output directory
 ```
 
 ## Options
 
 | Flag | Description |
 |------|-------------|
-| `-o DIR` | Output directory (default: ./ctf-image) |
-| `-q` | Quick mode (skip OCR, stego, forensic) |
-| `-f REGEX` | Search all outputs for flag pattern |
-| `-g PREFIX` | Auto-detect flags per contest prefix (e.g. LYKNCTF,FTPCTF) |
-| `-i` | Install all missing tools |
+| `-o DIR` | Output directory (default: `./ctf-image`) |
+| `-q` | Metadata and strings phases only |
+| `-f REGEX` | Search generated text logs with extended regex |
+| `-g PREFIX` | Find literal `PREFIX{...}` flags; comma-separate prefixes |
+| `-i` | Install missing tools |
 | `-h` | Show help |
 
 ## Tool Phases
 
 ### Phase 1 — Basic ID & Metadata (always)
+
 | Tool | Purpose |
 |------|---------|
-| `file` | Detect file type & encoding |
+| `file` | File type and encoding |
 | `exiftool` | EXIF/IPTC/XMP metadata |
-| `identify` | Image dimensions, bit depth |
-| `pngcheck` | PNG integrity & chunk analysis |
-| `xxd` | Hex dump (first 500B) |
+| `identify` | Dimensions, bit depth |
+| `pngcheck` | PNG integrity and chunks |
+| `xxd` | Hex dump |
 
 ### Phase 2 — Content Extraction (always)
+
 | Tool | Purpose |
 |------|---------|
-| `strings` | ASCII & UTF-16 strings |
-| `strings -sort -u` | Deduped strings for flag scanning |
-| `tesseract` | OCR visible/recovered text |
+| `strings` | ASCII and UTF-16 strings |
+| `strings | sort -u` | Deduplicated strings for flag scanning |
 
 ### Phase 3 — Steganography (full mode)
-| Tool | Purpose |
-|------|---------|
-| `binwalk` | Find embedded files & signatures |
-| `binwalk -e` | Extract embedded files |
-| `zsteg` | LSB steganography detection |
-| `steghide` | Steghide metadata (empty pass) |
-| `stegseek` | **Steghide password brute-force** |
+
+`binwalk`, `binwalk -e`, `zsteg`, `steghide`, `stegseek`.
 
 ### Phase 4 — QR & Barcodes (full mode)
-| Tool | Purpose |
-|------|---------|
-| `zbarimg` | QR/barcode decoding |
+
+`zbarimg`.
 
 ### Phase 5 — Forensic Extraction (full mode)
-| Tool | Purpose |
-|------|---------|
-| `foremost` | File carving from image containers |
-| `convert` | RGB channel separation |
+
+`foremost`, ImageMagick channel split.
 
 ### Phase 6 — Flag Analysis & Auto-Decode (always)
-Runs after all tool phases. Automatically:
 
-1. **Detects contest-specific flags** via `-g PREFIX` → finds `PREFIX{...}` patterns
-2. **Decodes Base64** → finds `[A-Za-z0-9+/]{20,}` strings, decodes, checks for flags
-3. **Decodes hex** → finds `[0-9a-fA-F]{40,}` strings, decodes, checks for flags
-4. **Detects common CTF patterns** → FLAG{}, CTF{}, picoCTF{}, key{}, lykn{}, interlock{}
+Scans every generated `.txt` log recursively. It detects common CTF flags, searches literal `-g` prefixes, and checks long Base64 and hex candidates for decoded flag text.
 
-## Examples
+## Report
 
-### Contest-Specific
+Each scan writes `<outdir>/report.html`. Open it locally to review captured tool logs. In full scans, RGB channel previews appear when the channel split succeeds. The report is static, has no JavaScript or external assets, and HTML-escapes tool output.
+
+## Installation
+
 ```bash
-./mscans -g LYKNCTF image.png
-```
-
-### Full Workflow
-```bash
-# Quick triage
-./mscans -q challenge.png
-grep -n "flag\|CTF\|LYKN" ./ctf-challenge/strings-unique.txt
-
-# Deep analysis if nothing found
-./mscans -g LYKNCTF challenge.png
-
-# Check stego
-cat ./ctf-challenge/stegseek.txt
-ls -la ./ctf-challenge/binwalk_extract/
-```
-
-## Installation Commands
-
-### Debian/Ubuntu
-```bash
-# Full toolset (all 12 tools)
-sudo apt install -y libimage-exiftool-perl imagemagick pngcheck \
-  binwalk ruby-zsteg steghide stegseek tesseract-ocr zbar-tools foremost
-
-# Or use auto-install
 ./mscans -i
 ```
 
-### RHEL/CentOS
-```bash
-sudo yum install -y exiftool ImageMagick pngcheck binwalk zsteg steghide tesseract zbar-tools foremost
-```
-
-### Fedora
-```bash
-sudo dnf install -y exiftool ImageMagick pngcheck binwalk zsteg steghide tesseract zbar-tools foremost
-```
-
-### macOS
-```bash
-brew install file exiftool imagemagick binwalk ruby-zsteg steghide tesseract zbar-tools foremost
-```
+`-i` uses your detected package manager and prints manual commands if unavailable. `install.sh` installs the wrapper under `/usr/local/lib/mscans`, links `mscans` into `/usr/local/bin`, then calls `mscans -i`; package inventory stays shared with normal scans.
 
 ## Supported OS
-- **Linux** (Debian/Ubuntu/RHEL/CentOS/Arch)
-- **macOS** (brew install)
-- **Windows** (WSL/Cygwin)
+
+- Linux (apt, dnf, yum, pacman)
+- macOS (Homebrew)
+- Windows through WSL/Cygwin
 
 ## License
 

@@ -4,7 +4,13 @@
       "Skill(deep-research)",
       "Bash(git *)",
       "Bash(./mscans *)",
-      "Bash(bash -n /home/nv/Documents/testground/mscans/mscans)"
+      "Bash(bash -n /home/nv/Documents/testground/mscans/mscans)",
+      "Skill(claude-api)",
+      "WebFetch(domain:staywild-a0b83b5fe06e.inst.omnictf.com)",
+      "Bash(curl *)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "codex"
+  ]
 }

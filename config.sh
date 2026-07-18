@@ -2,9 +2,7 @@
 
 # Configuration for CTF Image Analysis
 
-declare -A PKG_MAP
-# Default: apt names
-PKG_MAP=(
+declare -A PKG_MAP=(
     [exiftool]=libimage-exiftool-perl
     [identify]=imagemagick
     [convert]=imagemagick
@@ -13,7 +11,6 @@ PKG_MAP=(
     [zsteg]=ruby-zsteg
     [steghide]=steghide
     [stegseek]=stegseek
-    [tesseract]=tesseract-ocr
     [zbarimg]=zbar-tools
     [foremost]=foremost
     [xxd]=xxd
@@ -21,35 +18,52 @@ PKG_MAP=(
     [file]=file
 )
 
-# Phase definitions
-# Quick mode includes
-QUICK_PHASES=(
-    "file"
-    "exiftool"
-    "strings"
-    "pngcheck"
-    "binwalk"
-    "xxd"
-    "identify"
-)
+package_for() {
+    local tool="$1"
+    case "$PKG_MGR" in
+        apt) echo "${PKG_MAP[$tool]:-$tool}" ;;
+        dnf|yum)
+            case "$tool" in
+                exiftool) echo exiftool ;;
+                identify|convert) echo ImageMagick ;;
+                zbarimg) echo zbar-tools ;;
+                strings) echo binutils ;;
+                *) echo "$tool" ;;
+            esac
+            ;;
+        pacman)
+            case "$tool" in
+                exiftool) echo perl-image-exiftool ;;
+                identify|convert) echo imagemagick ;;
+                strings) echo binutils ;;
+                *) echo "$tool" ;;
+            esac
+            ;;
+        brew)
+            case "$tool" in
+                exiftool) echo exiftool ;;
+                identify|convert) echo imagemagick ;;
+                strings) echo binutils ;;
+                *) echo "$tool" ;;
+            esac
+            ;;
+        *) echo "$tool" ;;
+    esac
+}
 
-# Full mode phases
-FULL_PHASES=(
-    "file"
-    "exiftool"
-    "identify"
-    "strings"
-    "tesseract"
-    "binwalk"
-    "zsteg"
-    "steghide"
-    "stegseek"
-    "zbarimg"
-    "foremost"
-    "convert"
-)
+install_cmd_for() {
+    local tool="$1"
+    local package
+    package=$(package_for "$tool")
+    case "$PKG_MGR" in
+        apt) echo "sudo apt install -y $package" ;;
+        dnf|yum) echo "sudo $PKG_MGR install -y $package" ;;
+        pacman) echo "sudo pacman -S $package" ;;
+        brew) echo "brew install $package" ;;
+        *) echo "Install '$tool' via your package manager" ;;
+    esac
+}
 
-# Tool functions for execution
 run() {
     local label="$1"
     local cmd="$2"
@@ -57,7 +71,7 @@ run() {
     local outfile="$outdir/${label}.txt"
 
     echo -ne "${CYAN}[*]${NC} ${label}..."
-    if ! command -v "$cmd" &>/dev/null; then
+    if ! has "$cmd"; then
         MISSING_TOOLS+=("$cmd")
         echo -e " ${YELLOW}SKIP${NC} (not installed)"
         return 0
@@ -68,12 +82,11 @@ run() {
     else
         echo -e " ${RED}FAIL${NC}"
     fi
-    return 0
 }
 
 run_binwalk_extract() {
     echo -ne "${CYAN}[*]${NC} binwalk (extract)..."
-    if ! command -v binwalk &>/dev/null; then
+    if ! has binwalk; then
         MISSING_TOOLS+=("binwalk")
         echo -e " ${YELLOW}SKIP${NC} (not installed)"
         return 0
@@ -84,69 +97,46 @@ run_binwalk_extract() {
     else
         echo -e " ${RED}FAIL${NC}"
     fi
-    return 0
-}
-
-install_cmd_for() {
-    local tool="$1"
-    local pkg="${PKG_MAP[$tool]:-$tool}"
-    case "$PKG_MGR" in
-        apt)    echo "sudo apt install -y $pkg" ;;
-        dnf|yum) echo "sudo $PKG_MGR install -y $pkg" ;;
-        pacman) echo "sudo pacman -S $pkg" ;;
-        brew)   echo "brew install $tool" ;;
-        *)      echo "Install '$tool' via your package manager" ;;
-    esac
 }
 
 install_missing() {
-    local missing=("$@")
-    [[ ${#missing[@]} -eq 0 ]] && { echo "All tools already installed."; return 0; }
+    local -a missing=("$@")
+    local -a uniq=() packages=()
+    local tool package
 
-    # dedup
+    [[ ${#missing[@]} -eq 0 ]] && { echo "All tools already installed."; return 0; }
     readarray -t uniq < <(printf '%s\n' "${missing[@]}" | sort -u)
 
     case "$PKG_MGR" in
-        apt)
-            local pkgs=""
-            for t in "${uniq[@]}"; do pkgs+=" ${PKG_MAP[$t]:-$t}"; done
-            echo "Installing:${pkgs}"
-            sudo apt install -y $pkgs
-            ;;
-        dnf)
-            local pkgs=""
-            for t in "${uniq[@]}"; do pkgs+=" ${PKG_MAP[$t]:-$t}"; done
-            echo "Installing:${pkgs}"
-            sudo dnf install -y $pkgs
-            ;;
-        yum)
-            local pkgs=""
-            for t in "${uniq[@]}"; do pkgs+=" ${PKG_MAP[$t]:-$t}"; done
-            echo "Installing:${pkgs}"
-            sudo yum install -y $pkgs
+        apt|dnf|yum)
+            for tool in "${uniq[@]}"; do
+                packages+=("$(package_for "$tool")")
+            done
+            echo "Installing: ${packages[*]}"
+            sudo "$PKG_MGR" install -y "${packages[@]}"
             ;;
         pacman)
-            for t in "${uniq[@]}"; do
-                local pkg="${PKG_MAP[$t]:-$t}"
-                echo "Installing: ${pkg}"
-                sudo pacman -S --noconfirm "$pkg"
+            for tool in "${uniq[@]}"; do
+                packages+=("$(package_for "$tool")")
             done
+            echo "Installing: ${packages[*]}"
+            sudo pacman -S --noconfirm "${packages[@]}"
             ;;
         brew)
-            for t in "${uniq[@]}"; do
-                echo "Installing: ${t}"
-                brew install "$t"
+            for tool in "${uniq[@]}"; do
+                packages+=("$(package_for "$tool")")
             done
+            echo "Installing: ${packages[*]}"
+            brew install "${packages[@]}"
             ;;
         *)
             echo "No package manager detected. Install manually:"
-            for t in "${uniq[@]}"; do
-                echo "  $(install_cmd_for "$t")"
+            for tool in "${uniq[@]}"; do
+                echo "  $(install_cmd_for "$tool")"
             done
             return 1
             ;;
     esac
 }
 
-# Color definitions (for imported modules)
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
