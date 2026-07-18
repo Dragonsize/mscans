@@ -1,4 +1,4 @@
-# IMGscans — CTF Image Analysis Wrapper
+# mscans — CTF Image Analysis Wrapper
 
 Bash wrapper chaining forensic tools for CTF image analysis in optimal order.
 
@@ -10,22 +10,22 @@ Skips missing tools gracefully with install commands. Quick mode for fast initia
 
 ```bash
 # Quick mode — fast tools only (~10s)
-./IMGscans -q image.png
+./mscans -q image.png
 
 # Full analysis — all tools (~1-3 min)
-./IMGscans image.png
+./mscans image.png
 
 # Flag search
-./IMGscans -f 'FLAG' image.png
+./mscans -f 'FLAG' image.png
 
 # Contest prefix search
-./IMGscans -g LYKNCTF,FTPCTF image.png
+./mscans -g LYKNCTF,FTPCTF image.png
 
 # Install all missing tools (no image needed)
-./IMGscans -i
+./mscans -i
 
 # Custom output directory
-./IMGscans -o ./results image.png
+./mscans -o ./results image.png
 ```
 
 ## Options
@@ -89,17 +89,17 @@ Runs after all tool phases. Automatically:
 
 ### Contest-Specific
 ```bash
-./IMGscans -g LYKNCTF image.png
+./mscans -g LYKNCTF image.png
 ```
 
 ### Full Workflow
 ```bash
 # Quick triage
-./IMGscans -q challenge.png
+./mscans -q challenge.png
 grep -n "flag\|CTF\|LYKN" ./ctf-challenge/strings-unique.txt
 
 # Deep analysis if nothing found
-./IMGscans -g LYKNCTF challenge.png
+./mscans -g LYKNCTF challenge.png
 
 # Check stego
 cat ./ctf-challenge/stegseek.txt
@@ -115,7 +115,7 @@ sudo apt install -y libimage-exiftool-perl imagemagick pngcheck \
   binwalk ruby-zsteg steghide stegseek tesseract-ocr zbar-tools foremost
 
 # Or use auto-install
-./IMGscans -i
+./mscans -i
 ```
 
 ### RHEL/CentOS

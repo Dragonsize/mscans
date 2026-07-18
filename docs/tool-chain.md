@@ -158,7 +158,7 @@ This phase is **only in full mode** (slow but comprehensive).
 When using `-g PREFIX1,PREFIX2`:
 
 ```bash
-./IMGscans -g LYKNCTF,FTPCTF image.png
+./mscans -g LYKNCTF,FTPCTF image.png
 ```
 
 The script searches all extracted strings for `PREFIX{...}` patterns — far more precise than generic regex.
@@ -213,7 +213,7 @@ Falls back to searching for standard CTF formats:
 
 ### For Speed
 - Use `-q` for initial investigation
-- Run in background: `./IMGscans -q file.png &`
+- Run in background: `./mscans -q file.png &`
 - Focus on strings-unique.txt first
 - Check stegseek.txt for found passwords
 
