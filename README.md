@@ -141,6 +141,3 @@ brew install file exiftool imagemagick binwalk ruby-zsteg steghide tesseract zba
 ## License
 
 MIT — Copyright 2026 Dragonsize
-
-## Author
-- `nv` <nv@ctf-tools.dev>
