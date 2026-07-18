@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+
+# CTF Image Analysis Wrapper
+# Chains all tools in recommended order: file → exiftool → strings → pngcheck →
+# binwalk → zsteg → steghide → tesseract → zbarimg → foremost → xxd → identify
+# Missing tools are noted with install commands.
+set -uo pipefail
+
+# Load modules
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/utils.sh"
+
+source "$SCRIPT_DIR/config.sh"
+
+source "$SCRIPT_DIR/tools/metadata.sh"
+source "$SCRIPT_DIR/tools/content.sh"
+source "$SCRIPT_DIR/tools/stego.sh"
+source "$SCRIPT_DIR/tools/qr.sh"
+source "$SCRIPT_DIR/tools/forensic.sh"
+source "$SCRIPT_DIR/analyze.sh"
+
+main() {
+    parse_args "$@"
+
+    if [[ "${INSTALL:-}" == "1" ]]; then
+        install_mode
+        return 0
+    fi
+
+    validate_inputs
+
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}  CTF Image Analysis: ${basename}${NC}"
+    echo -e "${GREEN}  Output: ${outdir}/${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo ""
+
+    # Execute analysis phases
+    phase1_id_metadata
+    phase2_content_extraction
+
+    if [[ "$QUICK" -eq 0 ]]; then
+        phase3_steganography
+        phase4_qr_barcodes
+        phase5_forensic_extraction
+    fi
+
+    analyze_content
+
+    summary
+
+    if [[ -n "$FLAG" ]]; then
+        search_flag "$FLAG"
+    fi
+
+    if [[ -n "$PREFIX" ]]; then
+        grep_for "$PREFIX"
+    fi
+
+    echo ""
+    echo -e "${CYAN}Tips:${NC}"
+    echo -e "  • Review strings-unique.txt first for visible flag patterns"
+    echo -e "  • Check binwalk_extract/ for embedded files"
+    echo -e "  • For stego: zsteg (LSB), steghide, binwalk (embedded files), stegseek (passwords)"
+    echo -e "  • Run with -f 'FLAG|flag|ctf' to auto-search"
+    echo -e "  • Use -g LYKNCTF,FTPCTF for contest-specific prefix search"
+}
+
+parse_args() {
+    OUTDIR=""; QUICK=0; FLAG=""; PREFIX=""; INSTALL=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -o|--outdir)  OUTDIR="$2"; shift 2 ;;
+            -q|--quick)   QUICK=1; shift ;;
+            -f|--find)    FLAG="$2"; shift 2 ;;
+            -g|--grep)    PREFIX="$2"; shift 2 ;;
+            -i|--install) INSTALL=1; shift ;;
+            -h|--help)    usage ;;
+            -*)           echo "Unknown flag: $1"; usage ;;
+            *)            image="$1"; shift ;;
+        esac
+    done
+
+    if [[ "${INSTALL:-}" != "1" ]]; then
+        [[ -z "${image:-}" ]] && { echo "Error: no image file given."; usage; }
+        [[ ! -f "$image" ]] && { echo "Error: '$image' not found."; exit 1; }
+        basename="$(basename "$image")"
+        outdir="${OUTDIR:-./ctf-${basename%.*}}"
+        mkdir -p "$outdir"
+    fi
+}
+
+validate_inputs() {
+    : # Already done in parse_args
+}
+
+install_mode() {
+    echo -e "${YELLOW}=== Install Mode ===${NC}"
+    tools=(file exiftool identify convert pngcheck binwalk zsteg steghide tesseract zbarimg foremost xxd strings)
+    missing=()
+    for t in "${tools[@]}"; do
+        has "$t" || missing+=("$t")
+    done
+    install_missing "${missing[@]}"
+}
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [OPTIONS] <image>
+
+CTF Image Analysis — runs all available forensic tools on an image.
+
+Options:
+  -o, --outdir DIR   Output directory (default: ./ctf-<basename>)
+  -q, --quick        Run only fast tools (file, exiftool, strings, pngcheck,
+                      binwalk, xxd, identify)
+  -f, --find FLAG    Search extracted strings/files for a flag pattern (regex)
+  -g, --grep PREFIX  Auto-detect flag pattern with custom contest prefix (e.g., -g LYKNCTF,FTPCTF)
+  -i, --install      Install missing tools using detected package manager
+  -h, --help         Show this help
+EOF
+    exit 0
+}
+
+summary() {
+    echo ""
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}  Analysis Complete${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo ""
+
+    echo -e "${CYAN}=== Output Files ===${NC}"
+    for f in "$outdir"/*.txt; do
+        [[ -f "$f" ]] && echo "  $(basename "$f") ($(wc -c < "$f") bytes)"
+    done
+    [[ -d "$outdir/binwalk_extract" ]] && echo "  binwalk_extract/ ($(du -sb "$outdir/binwalk_extract" | cut -f1) bytes)"
+    [[ -d "$outdir/ocr-output" ]] && echo "  ocr-output/ ($(du -sb "$outdir/ocr-output" | cut -f1) bytes)"
+    [[ -d "$outdir/channels" ]] && echo "  channels/ ($(du -sb "$outdir/channels" | cut -f1) bytes)"
+
+    if [[ ${#MISSING_TOOLS[@]} -gt 0 ]]; then
+        echo ""
+        echo -e "${YELLOW}=== Missing Tools — Install for Full Coverage ===${NC}"
+        readarray -t uniq < <(printf '%s\n' "${MISSING_TOOLS[@]}" | sort -u)
+        for t in "${uniq[@]}"; do
+            printf "  %-12s %s\n" "$t" "$(install_cmd_for "$t")"
+        done
+        if [[ "$PKG_MGR" == "apt" ]]; then
+            echo ""
+            echo "  Quick install all:"
+            pkgs=""
+            for t in "${uniq[@]}"; do
+                pkgs+=" ${PKG_MAP[$t]:-$t}"
+            done
+            echo "    sudo apt install -y$pkgs"
+        fi
+    fi
+}
+
+main "$@"

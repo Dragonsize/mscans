@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Skill(deep-research)"
+      "Skill(deep-research)",
+      "Bash(git *)",
+      "Bash(./IMGscans *)",
+      "Bash(bash -n /home/nv/Documents/testground/IMGscans/IMGscans)"
     ]
   }
 }

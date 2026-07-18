@@ -1,14 +1,14 @@
 # Tool Chain Reference
 
-Complete documentation of the CTF image analysis tool chain order and dependencies.
+Documentation of CTF image analysis tool chain order and dependencies.
 
 ## Why This Order Matters
 
-CTF image challenges often follow predictable patterns. The tool chain is ordered by:
+CTF image challenges follow predictable patterns. The chain is ordered by:
 
-1. **Low-hanging fruit first** - Get the most likely flags quickly
-2. **Least destructive first** - Don't modify the image until needed
-3. **Data flow** - Each tool's output informs the next
+1. **Low-hanging fruit first** — catch obvious flags fast
+2. **Least destructive first** — don't modify image until needed
+3. **Data flow** — each tool's output informs the next
 
 ---
 
@@ -17,20 +17,20 @@ CTF image challenges often follow predictable patterns. The tool chain is ordere
 ### Purpose
 - Detect what you're dealing with
 - Extract all visible metadata
-- Identify potential issues
+- Identify format anomalies
 
 ### Tools
 
 | Tool | Command | Output | Why First? |
 |------|---------|--------|-----------|
-| `file` | `file image.png` | File type, encoding | Identifies if file is what it claims to be |
+| `file` | `file image.png` | File type, encoding | Identifies if file matches its extension |
 | `exiftool` | `exiftool image.png` | EXIF, IPTC, XMP metadata | Non-destructive metadata extraction |
 | `identify` | `identify -verbose image.png` | Dimensions, bit depth, color space | Image format details |
-| `pngcheck` | `pngcheck -v image.png` | PNG integrity, chunk analysis | Catches corruption, anomalies |
+| `pngcheck` | `pngcheck -v image.png` | PNG integrity, chunk analysis | Catches corruption, invalid CRC |
 | `xxd` | `xxd image.png \| head -500` | Hex dump | Visual pattern detection |
 
 ### Common Findings
-- File type mismatches (e.g., PNG header but JPEG content)
+- File type mismatches (PNG header but JPEG content)
 - Hidden EXIF fields (GPS, camera, comments)
 - Corrupted chunks or invalid CRC
 - Hex patterns (magic numbers, embedded strings)
@@ -44,29 +44,28 @@ This phase is **always included** in `-q` mode.
 
 ### Purpose
 - Extract all text/ASCII content from binary data
-- Detect visible text that needs OCR
+- Detect visible text needing OCR
 
 ### Tools
 
 | Tool | Command | Output | Why Here? |
 |------|---------|--------|-----------|
 | `strings` | `strings image.png` | ASCII strings (8+ chars) | Primary flag discovery method |
-| `strings-16` | `strings -el image.png` | UTF-16 strings | Catches non-ASCII flags |
-| `strings-unique` | `strings image.png \| sort -u` | Unique strings | Deduped for flag scanning |
+| `strings -el` | `strings -el image.png` | UTF-16 strings | Catches non-ASCII flags |
+| `strings \| sort -u` | Unique strings | Deduplicated output | For flag scanning |
 | `tesseract` | `tesseract image.png output` | OCR text | Extracts text written on image |
 
 ### Common Findings
-- Flag patterns: `FLAG{...}`, `CTF{...}`, `{...}`
+- Flag patterns: `FLAG{...}`, `CTF{...}`, `LYKN{...}`
 - Base64 encoded strings
 - URLs, IPs, file paths
 - Hidden comments or notes
-- Handwritten text requiring OCR
 
 ### Why Before Stego?
-Strings extraction catches **90%+ of flags** in simple challenges. Don't waste time on steganography until you've checked the obvious.
+Strings extraction catches **90%+ of flags** in simple challenges. Don't waste time on steganography until strings are reviewed.
 
 ### Quick Mode
-`tesseract` is **only in full mode** (it's slow). Strings are always included.
+`tesseract` is **only in full mode** (slow). Strings always included.
 
 ---
 
@@ -85,12 +84,19 @@ Strings extraction catches **90%+ of flags** in simple challenges. Don't waste t
 | `binwalk -e` | `binwalk -e image.png` | Extracted files | Pulls out embedded content |
 | `zsteg` | `zsteg image.png -a` | LSB steganography analysis | Detects hidden bits in pixels |
 | `steghide` | `steghide info -p "" image.png` | Steghide metadata | Password-protected stego files |
+| **`stegseek`** | `stegseek image.png --seed` | **Steghide password brute-force** | **Finds real passwords for steghide** |
 
-### Common Findings
-- Embedded ZIP/TAR archives
-- Secondary images hidden in pixels
-- LSB-encoded messages
-- Steghide password-protected files
+### Why Stegseek Matters
+Steghide is the most common CTF steganography format. Only tries empty password by default — misses most challenges. Stegseek performs intelligent password brute-forcing:
+
+```bash
+# With stegseek: finds password "ctf123"
+stegseek image.png --seed
+# Output: stegseek.txt shows discovered password
+
+# Then use it:
+steghide extract -p "ctf123" -f image.png
+```
 
 ### Why After Content Discovery?
 Steganography tools are:
@@ -103,10 +109,26 @@ This phase is **only in full mode** (slow but comprehensive).
 
 ---
 
-## Phase 4: Specialized Extraction
+## Phase 4: QR/Barcodes
 
 ### Purpose
 - Decode visual data (QR, barcodes)
+
+### Tools
+
+| Tool | Command | Output | Why Here? |
+|------|---------|--------|-----------|
+| `zbarimg` | `zbarimg --raw image.png` | QR/barcode content | Visual encoding used for flags |
+
+### Common Findings
+- QR codes with base64 or flag data
+- Barcodes encoding numbers/letters
+
+---
+
+## Phase 5: Forensic Extraction
+
+### Purpose
 - Extract files from image containers
 - Split color channels for analysis
 
@@ -114,94 +136,61 @@ This phase is **only in full mode** (slow but comprehensive).
 
 | Tool | Command | Output | Why Here? |
 |------|---------|--------|-----------|
-| `zbarimg` | `zbarimg --raw image.png` | QR/barcode content | Visual encoding often used for flags |
 | `foremost` | `foremost -i image.png -o out -t all` | Carved files | File carving for deleted content |
-| `convert` | `convert image.png -ch RGB ...` | Channel separation | Isolate red/green/blue channels |
+| `convert` | `convert image.png -channel RGB -separate channels_%d.png` | Channel separation | Isolate red/green/blue channels |
 
 ### Common Findings
-- QR codes with base64 or flag data
 - Deleted file remnants
 - Channel-specific hidden patterns
 - File fragments (JPG, ZIP, etc.)
 
-### Why Last?
-These are:
-- **Most resource intensive**
-- **Lowest hit rate** for typical CTFs
-- **Highly dependent** on earlier findings
-
-### Quick Mode
-This phase is **only in full mode**.
-
 ---
 
-## Phase 5: Integration & Analysis
+## Phase 6: Flag Analysis & Auto-Decode
 
 ### Purpose
-- Cross-reference all outputs
-- Search for flag patterns
-- Generate actionable intelligence
+- Intelligently detect and decode hidden flag content
+- Automatically decode common encodings
+- Find contest-specific flags
 
-### Tools
+### Priority 1: Contest Prefix Detection (`-g`)
 
-| Tool | Command | Output | Why Here? |
-|------|---------|--------|-----------|
-| `grep -rniE` | `grep -rniE 'FLAG\|flag\|ctf' ./outdir/` | Flag matches | Automated flag detection |
-| Manual review | `cat ./outdir/strings-unique.txt` | Visual scanning | Human verification |
+When using `-g PREFIX1,PREFIX2`:
 
-### Why Separate from Tools?
-This is **human-in-the-loop analysis**:
-- Automated search catches obvious patterns
-- Manual review catches subtle/obfuscated flags
-- Cross-referencing finds relationships between tools
-
-### Best Practices
-1. **Always start with `strings-unique.txt`**
-2. **Check `binwalk_extract/` before stego results**
-3. **Use regex patterns** (`-f` flag) for automated search
-4. **Compare multiple tools** - one tool may miss what another catches
-
----
-
-## Complete Workflow Example
-
-```
-# Quick initial scan
-./ctf-image.sh -q mystery.png
-
-# Review strings-unique.txt
-grep -n "flag\|FLAG\|ctf" ./ctf-mystery/strings-unique.txt
-
-# If no obvious flags, full analysis
-./ctf-image.sh -f 'FLAG|flag|ctf' mystery.png
-
-# Check binwalk output
-head -20 ./ctf-mystery/binwalk.txt
-
-# Review extracted files
-ls -la ./ctf-mystery/binwalk_extract/
+```bash
+./IMGscans -g LYKNCTF,FTPCTF image.png
 ```
 
----
+The script searches all extracted strings for `PREFIX{...}` patterns — far more precise than generic regex.
 
-## Tool Dependency Map
+### Priority 2: Base64 Decoding
 
-```
-file (standalone)
-exiftool (standalone)
-identify (standalone)
-strings (standalone)
-binwalk → binwalk-extract
-zsteg (standalone)
-steghide (standalone)
-tesseract (standalone)
-zbarimg (standalone)
-foremost (standalone)
-xxd (standalone)
-convert (standalone)
+Scans all outputs for long base64 strings (20+ chars), decodes them, and checks for flags:
+
+```bash
+# Finds: SGVsbG8gd29ybGQ=
+# Decodes to: Hello world
+# Checks decoded text for flags
 ```
 
-No tool depends on another's output. Each runs independently.
+### Priority 3: Hex Decoding
+
+Finds hex strings (40+ hex chars), converts to text/bytes, checks for flags:
+
+```bash
+# Finds: 48454c4c4f20464c4147
+# Decodes to: HELLO FLAG
+# Checks for flag patterns
+```
+
+### Priority 4: Common CTF Patterns
+
+Falls back to searching for standard CTF formats:
+- `FLAG{...}` — most common format
+- `CTF{...}` — contest-specific
+- `picoCTF{...}` — picoCTF platform
+- `key{...}` — key discovery format
+- `lykn{...}`, `interlock{...}` — contest-specific
 
 ---
 
@@ -211,11 +200,12 @@ No tool depends on another's output. Each runs independently.
 |-------|-------------|--------------|
 | Phase 1 | < 1 second | Very fast |
 | Phase 2 | 1-3 seconds | Fast (tesseract: 5-10s) |
-| Phase 3 | 5-30 seconds | Medium (binwalk: varies) |
-| Phase 4 | 3-10 seconds | Medium (foremost: varies) |
-| Phase 5 | < 1 second | Very fast |
+| Phase 3 | 5-30 seconds | Medium (stegseek: moderate) |
+| Phase 4 | 1-3 seconds | Fast |
+| Phase 5 | 3-10 seconds | Medium (foremost varies) |
+| **Phase 6** | **< 1 second** | **Very fast (string search + decode)** |
 
-**Total**: Quick mode ~5-15 seconds, Full mode ~15-60 seconds.
+**Total**: Quick ~5-15s, Full ~15-60s, plus Phase 6 (~1s)
 
 ---
 
@@ -223,13 +213,15 @@ No tool depends on another's output. Each runs independently.
 
 ### For Speed
 - Use `-q` for initial investigation
-- Run in background: `./ctf-image.sh -q file.png &`
-- Focus on strings output first
+- Run in background: `./IMGscans -q file.png &`
+- Focus on strings-unique.txt first
+- Check stegseek.txt for found passwords
 
 ### For Accuracy
-- Run full mode when quick mode fails
-- Use `-f` to search for specific patterns
-- Cross-reference multiple tool outputs
+- Use `-g` with your contest prefix(s)
+- Always check Phase 6 output for auto-decoded flags
+- Review binwalk_extract/ before stego tools
+- Cross-reference multiple tools' outputs
 
 ### For Large Files
 - Quick mode essential for large images
@@ -239,95 +231,43 @@ No tool depends on another's output. Each runs independently.
 ### For Steganography
 - Focus on `binwalk -e` and `zsteg` first
 - Check all extracted files in `binwalk_extract/`
-- Try `steghide` with common passwords
+- Use `stegseek` for password-protected steghide files
+- Review `stegseek.txt` for discovered passwords
 
 ---
 
-## Troubleshooting Tools
+## Tool Dependency Map
 
-### `exiftool` fails
-- Image may be corrupted
-- Try: `identify image.png` to verify format
-
-### `zsteg` fails
-- Not all images support LSB stego
-- PNGs are primary target, JPEGs limited
-
-### `binwalk` finds nothing
-- Nothing embedded in this image
-- Move to stego tools
-
-### `steghide` fails
-- Try different passwords: `steghide extract -p "password" -f image.png`
-- Check if file is actually steghide-protected
-
-### `tesseract` fails
-- Language pack missing: `sudo apt install tesseract-ocr-eng`
-- Poor OCR quality - try manual reading
-
-### `zbarimg` fails
-- QR code too small or damaged
-- Try: `zbarimg image.png --raw` to force
-
-### `foremost` fails
-- File not in carving database
-- Try: `foremost -i image.png -o out -t all` to scan all types
-
----
-
-## Advanced Usage
-
-### Custom Tool Order
-Modify the script to skip phases:
-```bash
-# Phase 1 only (metadata)
-./ctf-image.sh -q -o metadata image.png
-
-# Skip steganography
-./ctf-image.sh -f 'FLAG|flag' image.png
+```
+file          (standalone)
+exiftool      (standalone)
+identify      (standalone)
+strings       (standalone)
+binwalk       → binwalk-extract
+zsteg         (standalone)
+steghide      (standalone)
+stegseek      (standalone — brute-forces steghide passwords)
+tesseract     (standalone)
+zbarimg       (standalone)
+foremost      (standalone)
+convert       (standalone)
 ```
 
-### Parallel Analysis
-```bash
-# Quick analysis while you review
-./ctf-image.sh -q image.png & QUICK_PID=$!
-
-# Full analysis runs in background
-./ctf-image.sh image.png & FULL_PID=$!
-
-# Kill full if quick finds flag
-if wait $QUICK_PID; then
-    echo "Flag found, stopping full analysis"
-    kill $FULL_PID 2>/dev/null
-fi
-```
-
-### Custom Regex Patterns
-```bash
-# Search for base64
-./ctf-image.sh -f '[A-Za-z0-9+/]{40,}' image.png
-
-# Search for IP addresses
-./ctf-image.sh -f '\b[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\b' image.png
-```
+No tool depends on another's output. Each runs independently.
 
 ---
 
-## Future Enhancements
+## Troubleshooting
 
-### Planned Features
-- [ ] Add `stegsolve` support (Java-based visual analysis)
-- [ ] Integrate `zsteg` channel visualization
-- [ ] Support for animated GIF analysis
-- [ ] PDF embedded image extraction
-- [ ] Automated correlation between tools
-
-### Known Limitations
-- JPEG steganography support limited
-- Password-protected stego requires guessing
-- Large files cause slow performance
-- No automated channel visualization
+| Tool | Common Issue | Solution |
+|------|-------------|----------|
+| `exiftool` | Fails on corrupted image | Try `identify image.png` first |
+| `zsteg` | Fails on JPEG | Limited to PNG primarily |
+| `steghide` | Tries empty password only | Install `stegseek` for brute-force |
+| `stegseek` | Not in standard repos | Install: `sudo apt install stegseek` or build from source |
+| `tesseract` | Language pack missing | `sudo apt install tesseract-ocr-eng` |
+| `zbarimg` | QR code too small | Try: `zbarimg image.png --raw --set '*.enable=1'` |
 
 ---
 
-*Last updated: $(date +%Y-%m-%d)*
+*Last updated: July 18, 2026*

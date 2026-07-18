@@ -1,215 +1,146 @@
 # IMGscans — CTF Image Analysis Wrapper
 
-A robust bash wrapper that chains all essential forensic tools for CTF image analysis in the optimal order.
+Bash wrapper chaining forensic tools for CTF image analysis in optimal order.
 
-## Overview
+**File → Metadata → Strings → Binwalk → LSB Stego → Steghide/Stegseek → QR → Foremost → Channel Split → Auto-Decode**
 
-This tool automates the recommended forensic workflow for analyzing images in Capture The Flag (CTF) challenges. It runs a complete suite of analysis tools in the order they should be used for maximum flag discovery:
-
-```
-File analysis → Metadata extraction → Content discovery → Steganography
-→ QR/Barcodes → Forensic extraction
-```
-
-The script intelligently handles missing tools by providing installation commands and skips unnecessary checks in quick mode for faster results.
-
-## Features
-
-- **Full toolset**: 12 specialized tools including file analysis, steganography detection, OCR, forensic extraction
-- **Quick mode**: Skip expensive OCR and forensic extraction for rapid initial analysis
-- **Install instructions**: Automatic detection of your package manager with precise install commands for missing tools
-- **Flag search**: Built-in regex search across all extracted content
-- **Structured output**: Organized directory structure for clean result management
-- **Production ready**: Comprehensive error handling, logging, and user-friendly interfaces
-
-## Installation
-
-The script is ready to use. It includes intelligent install commands for missing dependencies.
+Skips missing tools gracefully with install commands. Quick mode for fast initial triage.
 
 ## Quick Start
 
-### Fast Analysis
 ```bash
-# Quick mode - basic tools only (~10 seconds)
-./ctf-image.sh -q image.png
+# Quick mode — fast tools only (~10s)
+./IMGscans -q image.png
 
-# Full analysis - all tools (~3-5 minutes)
-./ctf-image.sh image.png
+# Full analysis — all tools (~1-3 min)
+./IMGscans image.png
+
+# Flag search
+./IMGscans -f 'FLAG' image.png
+
+# Contest prefix search
+./IMGscans -g LYKNCTF,FTPCTF image.png
+
+# Install all missing tools (no image needed)
+./IMGscans -i
+
+# Custom output directory
+./IMGscans -o ./results image.png
 ```
 
-### Search for Flags
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `-o DIR` | Output directory (default: ./ctf-image) |
+| `-q` | Quick mode (skip OCR, stego, forensic) |
+| `-f REGEX` | Search all outputs for flag pattern |
+| `-g PREFIX` | Auto-detect flags per contest prefix (e.g. LYKNCTF,FTPCTF) |
+| `-i` | Install all missing tools |
+| `-h` | Show help |
+
+## Tool Phases
+
+### Phase 1 — Basic ID & Metadata (always)
+| Tool | Purpose |
+|------|---------|
+| `file` | Detect file type & encoding |
+| `exiftool` | EXIF/IPTC/XMP metadata |
+| `identify` | Image dimensions, bit depth |
+| `pngcheck` | PNG integrity & chunk analysis |
+| `xxd` | Hex dump (first 500B) |
+
+### Phase 2 — Content Extraction (always)
+| Tool | Purpose |
+|------|---------|
+| `strings` | ASCII & UTF-16 strings |
+| `strings -sort -u` | Deduped strings for flag scanning |
+| `tesseract` | OCR visible/recovered text |
+
+### Phase 3 — Steganography (full mode)
+| Tool | Purpose |
+|------|---------|
+| `binwalk` | Find embedded files & signatures |
+| `binwalk -e` | Extract embedded files |
+| `zsteg` | LSB steganography detection |
+| `steghide` | Steghide metadata (empty pass) |
+| `stegseek` | **Steghide password brute-force** |
+
+### Phase 4 — QR & Barcodes (full mode)
+| Tool | Purpose |
+|------|---------|
+| `zbarimg` | QR/barcode decoding |
+
+### Phase 5 — Forensic Extraction (full mode)
+| Tool | Purpose |
+|------|---------|
+| `foremost` | File carving from image containers |
+| `convert` | RGB channel separation |
+
+### Phase 6 — Flag Analysis & Auto-Decode (always)
+Runs after all tool phases. Automatically:
+
+1. **Detects contest-specific flags** via `-g PREFIX` → finds `PREFIX{...}` patterns
+2. **Decodes Base64** → finds `[A-Za-z0-9+/]{20,}` strings, decodes, checks for flags
+3. **Decodes hex** → finds `[0-9a-fA-F]{40,}` strings, decodes, checks for flags
+4. **Detects common CTF patterns** → FLAG{}, CTF{}, picoCTF{}, key{}, lykn{}, interlock{}
+
+## Examples
+
+### Contest-Specific
 ```bash
-# Auto-search for flag patterns in extracted content
-./ctf-image.sh -f 'FLAG|flag|ctf|FLAG{' image.png
+./IMGscans -g LYKNCTF image.png
 ```
 
-### Custom Output
+### Full Workflow
 ```bash
-# Specify output directory
-./ctf-image.sh -o ./results image.png
+# Quick triage
+./IMGscans -q challenge.png
+grep -n "flag\|CTF\|LYKN" ./ctf-challenge/strings-unique.txt
+
+# Deep analysis if nothing found
+./IMGscans -g LYKNCTF challenge.png
+
+# Check stego
+cat ./ctf-challenge/stegseek.txt
+ls -la ./ctf-challenge/binwalk_extract/
 ```
 
-## Tool Chain
+## Installation Commands
 
-### Phase 1: Basic Analysis (`-q` includes)
-- `file` - Detect file type and encoding
-- `exiftool` - Extract EXIF/IPTC/XMP metadata
-- `identify` - Get image dimensions and properties
-- `pngcheck` - Verify PNG integrity
-- `xxd` - Initial hex dump (first 500 bytes)
-
-### Phase 2: Content Discovery (always)
-- `strings` - Extract ASCII/UTF-16 content
-- `strings-unique` - Sorted unique strings for flag patterns
-- `tesseract` - OCR for visible/recovered text
-
-### Phase 3: Advanced (full mode only)
-- `binwalk` - Find embedded files and headers
-- `binwalk-extract` - Extract embedded files
-- `zsteg` - LSB steganography detection
-- `steghide` - Steganography file analysis
-- `zbarimg` - QR code and barcode decoding
-- `foremost` - Forensic file extraction
-- `convert` - Channel separation (if available)
-
-### Tool Status Handling
-
-Missing tools are automatically detected and noted:
-
-```
-=== Missing Tools — Install for Full Coverage ===
-  exiftool     sudo apt install -y libimage-exiftool-perl
-  identify     sudo apt install -y imagemagick
-  tesseract    sudo apt install -y tesseract-ocr
-```
-
-Click the install command for your specific package manager (apt/dnf/yum/pacman/brew).
-
-### Optimization Recommendations
-
-1. **Start with Quick Mode**: Always begin with `-q` to get basic metadata and strings quickly
-2. **Flag Search First**: Focus on `strings-unique.txt` for obvious flag patterns
-3. **Steganography Priority**: Run full mode if quick mode doesn't yield results
-4. **Check Binwalk**: `binwalk -e` is often the richest source of embedded data
-5. **Regex Search**: Use `-f 'FLAG|flag|ctf|FLAG{'` to auto-search across all outputs
-
-## Example CTF Analysis Workflow
-
-### Step 1: Initial Investigation
+### Debian/Ubuntu
 ```bash
-# Fast initial scan
-./ctf-image.sh -q mystery.png > mystery_scan.log 2>&1
+# Full toolset (all 12 tools)
+sudo apt install -y libimage-exiftool-perl imagemagick pngcheck \
+  binwalk ruby-zsteg steghide stegseek tesseract-ocr zbar-tools foremost
 
-# Look for obvious flags
-head -100 ./ctf-mystery/strings-unique.txt
+# Or use auto-install
+./IMGscans -i
 ```
 
-### Step 2: Deep Analysis
+### RHEL/CentOS
 ```bash
-# Full forensic analysis if quick didn't find anything
-./ctf-image.sh -f 'FLAG|flag|ctf' mystery.png > mystery_deep.log 2>&1
-
-# Review binwalk results
-ls -la ./ctf-mystery/binwalk_extract/
-if [ -d ./ctf-mystery/binwalk_extract ]; then
-    tar -czf embedded_files.tar.gz ./ctf-mystery/binwalk_extract/*
-fi
+sudo yum install -y exiftool ImageMagick pngcheck binwalk zsteg steghide tesseract zbar-tools foremost
 ```
 
-### Step 3: Targeted Extraction
+### Fedora
 ```bash
-# Extract channels if ImageMagick available
-if [ -f ./ctf-mystery/channels/channel_0.png ]; then
-    identify ./ctf-mystery/channels/channel_0.png
-    strings ./ctf-mystery/channels/channel_0.png
-fi
+sudo dnf install -y exiftool ImageMagick pngcheck binwalk zsteg steghide tesseract zbar-tools foremost
 ```
 
-## Troubleshooting
-
-### Common Issues
-
-**Install Commands Not Working**
-- Your package manager might use different package names
-- Try installing the tool directly: `sudo apt install exiftool` (or `apt-get install exiftool`)
-
-**Image Format Issues**
-- Works best with PNG, JPEG, GIF, BMP, TIFF
-- Some tools may fail on corrupted files - try different tools
-
-**Missing Dependencies**
-- Install recommended tool sets: `sudo apt install libimage-exiftool-perl imagemagick binwalk`
-
-**Performance Issues**
-- Large images: Use `-q` first
-- Long analysis: Let it run in background
+### macOS
+```bash
+brew install file exiftool imagemagick binwalk ruby-zsteg steghide tesseract zbar-tools foremost
+```
 
 ## Supported OS
-
 - **Linux** (Debian/Ubuntu/RHEL/CentOS/Arch)
 - **macOS** (brew install)
-- **Windows** (WSL/Cygwin/equivalent)
-
-## Installation Commands (Quick Reference)
-
-```bash
-# Debian/Ubuntu
-# Basic: sudo apt install libimage-exiftool-perl imagemagick file binwalk
-# Full: sudo apt install libimage-exiftool-perl imagemagick pngcheck binwalk ruby-zsteg steghide tesseract-ocr zbar-tools foremost
-
-# RHEL/CentOS
-# Basic: sudo yum install exiftool ImageMagick file binwalk
-# Full: sudo yum install exiftool ImageMagick pngcheck binwalk zsteg steghide tesseract zbar-tools foremost
-
-# Fedora
-# Basic: sudo dnf install exiftool ImageMagick file binwalk
-# Full: sudo dnf install exiftool ImageMagick pngcheck binwalk zsteg steghide tesseract zbar-tools foremost
-
-# macOS
-# Basic: brew install file exiftool imagemagick binwalk
-# Full: brew install exiftool imagemagick pngcheck binwalk zsteg steghide tesseract zbar-tools foremost
-```
-
-## Contribute
-
-### Enhancements
-- Add new CTF tool support (`grep -r "stego" | head -20`)
-- Support more regex patterns for flag detection
-- Add automated correlation between tools
-
-### Bug Reports
-- Check that all tools are in PATH: `type -a exiftool identify file`
-- Test with known-good images: `wget -q -O sample.png "https://example.com/sample.png"`
+- **Windows** (WSL/Cygwin)
 
 ## License
 
-```
-MIT License
-
-Copyright (c) $(date +%Y) nv
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+MIT — Copyright 2026 Dragonsize
 
 ## Author
-
 - `nv` <nv@ctf-tools.dev>
-- Claude Fable 5 <noreply@anthropic.com>
-
-Last updated: $(date +%Y-%m-%d)
