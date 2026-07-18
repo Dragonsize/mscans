@@ -7,7 +7,12 @@
       "Bash(bash -n /home/nv/Documents/testground/mscans/mscans)",
       "Skill(claude-api)",
       "WebFetch(domain:staywild-a0b83b5fe06e.inst.omnictf.com)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(command -v convert)",
+      "Bash(command -v magick)",
+      "Bash(command -v python3)",
+      "Bash(command -v qrencode)",
+      "Bash(command -v exiftool)"
     ]
   },
   "enabledMcpjsonServers": [

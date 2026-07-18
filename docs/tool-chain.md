@@ -52,7 +52,8 @@ Always runs after tool phases. It recursively scans generated text logs, not arb
 2. Long Base64 candidates are decoded individually and checked for standard flag patterns.
 3. Long hex candidates are decoded individually and checked for standard flag patterns.
 4. Standard patterns include `FLAG{}`, `CTF{}`, `picoCTF{}`, `key{}`, `lykn{}`, and `interlock{}`.
-5. `-f REGEX` remains an extended-regex search over generated text logs.
+5. Exact candidates from steps 1–4 appear once in final terminal `=== Suspected Flags ===` summary. They are leads, not proof.
+6. `-f REGEX` remains an extended-regex search over generated text logs and does not enter suspected-flag summary.
 
 ## HTML Report
 

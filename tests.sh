@@ -19,6 +19,8 @@ done
 mkdir -p "$TMP/bin"
 cat > "$TMP/bin/strings" <<'EOF'
 #!/usr/bin/env bash
+for arg; do image="$arg"; done
+[[ "$image" == *no-flags.png ]] && exit 0
 printf '%s\n' '<script>alert(1)</script>' \
   'RkxBR3tiNjRfd29ya3NfMTIzNDU2Nzg5fQ==' \
   'Q1RGe2I2NF9zZWNvbmRfMTIzNDU2Nzg5fQ==' \
@@ -38,6 +40,13 @@ assert_contains "$TMP/run.txt" 'CTF{b64_second_123456789}'
 assert_contains "$TMP/run.txt" 'FLAG{hex_works_123456789}'
 assert_contains "$TMP/run.txt" 'CTF{hex_second_123456789}'
 assert_contains "$TMP/run.txt" 'LYKNCTF{literal_prefix}'
+assert_contains "$TMP/run.txt" '=== Suspected Flags ==='
+assert_contains "$TMP/run.txt" '  FLAG{b64_works_123456789}'
+assert_contains "$TMP/run.txt" '  CTF{b64_second_123456789}'
+assert_contains "$TMP/run.txt" '  FLAG{hex_works_123456789}'
+assert_contains "$TMP/run.txt" '  CTF{hex_second_123456789}'
+assert_contains "$TMP/run.txt" '  LYKNCTF{literal_prefix}'
+[[ $(grep -Fc '  FLAG{b64_works_123456789}' "$TMP/run.txt") -eq 1 ]] || fail "duplicate suspected flag"
 assert_contains "$TMP/out/report.html" '&lt;script&gt;alert(1)&lt;/script&gt;'
 if grep -Fq '<script>alert(1)</script>' "$TMP/out/report.html"; then
     fail "report contains executable log markup"
@@ -58,6 +67,11 @@ assert_contains "$TMP/regex.txt" 'nested/finding.txt'
 assert_contains "$TMP/prefix.txt" 'A.B{literal_prefix}'
 assert_contains "$TMP/out/report.html" 'nested/finding.txt'
 assert_contains "$TMP/out/report.html" 'channels/channel_0.png'
+
+printf '\211PNG\r\n\032\n' > "$TMP/no-flags.png"
+PATH="$TMP/bin:$PATH" "$ROOT/mscans" -q -o "$TMP/no-flags-out" "$TMP/no-flags.png" > "$TMP/no-flags-run.txt" 2>&1
+assert_contains "$TMP/no-flags-run.txt" '=== Suspected Flags ==='
+assert_contains "$TMP/no-flags-run.txt" '(no suspected flags)'
 
 bash -n "$ROOT/mscans" "$ROOT/utils.sh" "$ROOT/config.sh" "$ROOT/analyze.sh" "$ROOT/install.sh" "$ROOT/tools/"*.sh
 echo "tests passed"

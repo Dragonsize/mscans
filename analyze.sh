@@ -3,6 +3,18 @@
 # Phase 6: Flag Analysis & Auto-Decode
 
 FLAG_PATTERN='FLAG\{[^}]*\}|CTF\{[^}]*\}|picoCTF\{[^}]*\}|key\{[^}]*\}|lykn\{[^}]*\}|interlock\{[^}]*\}|[[:alnum:]_]+\{[[:alnum:]_:-]{10,}\}'
+SUSPECTED_FLAGS=()
+
+collect_flags() {
+    local candidate known
+    while IFS= read -r candidate; do
+        [[ -n "$candidate" ]] || continue
+        for known in "${SUSPECTED_FLAGS[@]}"; do
+            [[ "$known" == "$candidate" ]] && continue 2
+        done
+        SUSPECTED_FLAGS+=("$candidate")
+    done
+}
 
 log_matches() {
     local pattern="$1"
@@ -24,7 +36,7 @@ decode_base64() {
     local b64 decoded
     while IFS= read -r b64; do
         decoded=$(printf '%s' "$b64" | base64 -d 2>/dev/null) || continue
-        grep -aE -- "$FLAG_PATTERN" <<<"$decoded" || true
+        grep -aoE -- "$FLAG_PATTERN" <<<"$decoded" || true
     done
 }
 
@@ -32,7 +44,7 @@ decode_hex() {
     local hexdump decoded
     while IFS= read -r hexdump; do
         decoded=$(printf '%s' "$hexdump" | xxd -r -p 2>/dev/null) || continue
-        grep -aE -- "$FLAG_PATTERN" <<<"$decoded" || true
+        grep -aoE -- "$FLAG_PATTERN" <<<"$decoded" || true
     done
 }
 
@@ -63,6 +75,7 @@ search_prefixes() {
     for prefix in "${prefixes[@]}"; do
         [[ -z "$prefix" ]] && continue
         matches=$(log_matches "$(printf '%s' "$prefix{" | sed 's/[][\\.^$*+?(){}|]/\\&/g')[^}]*\\}")
+        collect_flags < <(printf '%s\n' "$matches" | grep -aoE "$(printf '%s' "$prefix{" | sed 's/[][\\.^$*+?(){}|]/\\&/g')[^}]*\\}" || true)
         print_matches "Flag search (prefix): ${prefix}" "$matches" 20
     done
 }
@@ -70,6 +83,7 @@ search_prefixes() {
 analyze_content() {
     local base64_found hex_found flags
 
+    SUSPECTED_FLAGS=()
     echo -e "${YELLOW}--- Phase 6: Flag Analysis & Auto-Decode ---${NC}"
 
     if [[ -n "${PREFIX:-}" ]]; then
@@ -80,6 +94,7 @@ analyze_content() {
     echo -e "${CYAN}[*]${NC} Base64 auto-decode..."
     base64_found=$(log_candidates '[A-Za-z0-9+/]{20,}={0,2}' | decode_base64)
     if [[ -n "$base64_found" ]]; then
+        collect_flags <<<"$base64_found"
         echo -e "${GREEN}Decoded Base64:${NC}"
         head -15 <<<"$base64_found"
         echo ""
@@ -88,6 +103,7 @@ analyze_content() {
     echo -e "${CYAN}[*]${NC} Hex auto-decode..."
     hex_found=$(log_candidates '[[:xdigit:]]{40,}' | decode_hex)
     if [[ -n "$hex_found" ]]; then
+        collect_flags <<<"$hex_found"
         echo -e "${GREEN}Decoded hex:${NC}"
         head -15 <<<"$hex_found"
         echo ""
@@ -96,6 +112,7 @@ analyze_content() {
     echo -e "${CYAN}[*]${NC} CTF flag patterns..."
     flags=$(log_matches "$FLAG_PATTERN")
     if [[ -n "$flags" ]]; then
+        collect_flags < <(log_candidates "$FLAG_PATTERN")
         echo -e "${GREEN}Common flags:${NC}"
         head -15 <<<"$flags"
         echo ""

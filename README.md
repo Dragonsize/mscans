@@ -61,7 +61,7 @@ Missing tools skip cleanly. Every scan writes text logs plus `report.html`.
 
 ### Phase 6 — Flag Analysis & Auto-Decode (always)
 
-Scans every generated `.txt` log recursively. It detects common CTF flags, searches literal `-g` prefixes, and checks long Base64 and hex candidates for decoded flag text.
+Scans every generated `.txt` log recursively. It detects common CTF flags, searches literal `-g` prefixes, and checks long Base64 and hex candidates for decoded flag text. Final terminal summary lists deduplicated suspected flags; `-f` regex matches stay search-only.
 
 ## Report
 
