@@ -1,0 +1,20 @@
+# IMGscans output directories
+ctf-*/
+
+# Test outputs
+test_ctf/
+test_*/
+
+# Editor/IDE
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
